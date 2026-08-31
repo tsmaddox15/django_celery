@@ -1,0 +1,62 @@
+services:
+  web:
+    build: .
+    container_name: django_app
+    command: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    volumes:
+      - .:/app:z
+    environment:
+      - DJANGO_SETTINGS_MODULE=mysite.settings.dev
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_TASK_ALWAYS_EAGER=0
+
+  worker:
+    build: .
+    container_name: django_celery_worker
+    command: celery -A mysite worker --loglevel=info --concurrency 1
+    depends_on:
+      - redis
+    volumes:
+      - .:/app:z
+    environment:
+      - DJANGO_SETTINGS_MODULE=mysite.settings.dev
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_TASK_ALWAYS_EAGER=0
+
+  beat:
+    build: .
+    container_name: django_celery_beat
+    command: celery -A mysite beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    depends_on:
+      - redis
+    volumes:
+      - .:/app:z
+    environment:
+      - DJANGO_SETTINGS_MODULE=mysite.settings.dev
+      - CELERY_BROKER_URL=redis://redis:6379/0
+
+  flower:
+    build: .
+    container_name: django_celery_flower
+    command: celery -A mysite flower --address=0.0.0.0 --port=5555
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+      - worker
+    volumes:
+      - .:/app:z
+    environment:
+      - DJANGO_SETTINGS_MODULE=mysite.settings.dev
+      - CELERY_BROKER_URL=redis://redis:6379/0
+
+  redis:
+    image: redis:7-alpine
+    container_name: django_redis
+    ports:
+      - "6379:6379"

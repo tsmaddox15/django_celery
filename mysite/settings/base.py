@@ -10,10 +10,12 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
+# settings/ is a package, so climb out of it too: mysite/settings/ -> mysite/ -> repo root.
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 # Quick-start development settings - unsuitable for production
@@ -24,10 +26,6 @@ SECRET_KEY = 'django-insecure-^ffdli1x$=&!gow!*t5z@x)o_!f#u_z@bngsd*go$)8chcm2u7
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
-
-ALLOWED_HOSTS = []
-
-
 # Application definition
 
 INSTALLED_APPS = [
@@ -37,6 +35,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
+    'django_celery_results',
 ]
 
 MIDDLEWARE = [
@@ -124,4 +124,41 @@ MAILERS = {
     'default': {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
+}
+
+
+# Celery
+# https://docs.celeryq.dev/en/stable/django/first-steps-with-django.html
+#
+# Every CELERY_* name here is read by mysite/celery.py via
+# app.config_from_object('django.conf:settings', namespace='CELERY'), i.e.
+# CELERY_BROKER_URL below sets Celery's own `broker_url`.
+
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/0')
+
+# Results go to the Django ORM (django_celery_results), not Redis, so they are
+# queryable from the admin and survive a broker flush.
+CELERY_RESULT_BACKEND = 'django-db'
+CELERY_RESULT_EXTENDED = True
+
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_ACCEPT_CONTENT = ['json']
+
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_WORKER_HIJACK_ROOT_LOGGER = False
+
+# Periodic tasks for `celery beat`. django-celery-beat's DatabaseScheduler is
+# not usable yet (its newest release caps at Django < 6.1), so the schedule
+# lives here rather than in the database.
+CELERY_BEAT_SCHEDULE = {
+    # 'add-every-30-seconds': {
+    #     'task': 'mysite.celery.add',
+    #     'schedule': 30.0,
+    #     'args': (16, 16),
+    # },
 }

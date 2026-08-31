@@ -1,4 +1,5 @@
 import os
+import time
 
 from celery import Celery
 
@@ -23,3 +24,11 @@ def debug_task(self):
 def add(x, y):
     """Placeholder task, handy for checking the worker and Flower are wired up."""
     return x + y
+
+
+@app.task(bind=True)
+def long_running(self, seconds=10):
+    """Placeholder slow automation. Routed to the `automations` queue by
+    CELERY_TASK_ROUTES, so it runs on the dedicated worker."""
+    time.sleep(seconds)
+    return f'slept {seconds}s on {self.request.hostname}'

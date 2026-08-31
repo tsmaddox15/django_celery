@@ -3,48 +3,43 @@
 Django 6.1 + Celery 5.6, with Redis as the broker and task results stored in the
 database via `django-celery-results`.
 
-## Running locally (no Docker)
-
-`mysite.settings.dev` sets `CELERY_TASK_ALWAYS_EAGER = True`, so tasks execute
-inline in the calling process — no broker or worker needed:
+## Running it
 
 ```bash
-uv run python manage.py migrate
-uv run python manage.py runserver
+docker compose up --build
 ```
 
-Eager results are still written to the `django-db` backend
-(`CELERY_TASK_STORE_EAGER_RESULT`), so `AsyncResult(...)` and the admin behave
-the same as they do against a real worker, and exceptions propagate to the
-caller (`CELERY_TASK_EAGER_PROPAGATES`).
+| Service              | What it runs                          | Where                 |
+|----------------------|---------------------------------------|-----------------------|
+| `redis`              | broker                                | `localhost:6379`      |
+| `web`                | `manage.py migrate`, then `runserver` | http://localhost:8000 |
+| `worker`             | `-Q default --concurrency 3`          | —                     |
+| `worker_automations` | `-Q automations --concurrency 2`      | —                     |
+| `beat`               | `celery -A mysite beat`               | —                     |
+| `flower`             | `celery -A mysite flower`             | http://localhost:5555 |
 
-## Running with Docker Compose
+Docker is the dev environment, so tasks always go through Redis to a real
+worker. There is no eager mode.
 
-```bash
-docker compose build --build-arg UID=$(id -u) --build-arg GID=$(id -g)
-docker compose up
-```
+## Queues
 
-| Service  | What it runs                              | Where                 |
-|----------|-------------------------------------------|-----------------------|
-| `redis`  | broker                                    | `localhost:6379`      |
-| `web`    | `manage.py migrate`, then `runserver`     | http://localhost:8000 |
-| `worker` | `celery -A mysite worker`                 | —                     |
-| `beat`   | `celery -A mysite beat`                   | —                     |
-| `flower` | `celery -A mysite flower`                 | http://localhost:5555 |
+Short tasks run on `default`. Slow automations (5-15 minutes) run on
+`automations` with their own worker, so one long job can't occupy every slot the
+fast tasks need. Route a task to the slow lane in `CELERY_TASK_ROUTES`
+(`mysite/settings/base.py`), or per call with
+`my_task.apply_async(queue='automations')`.
 
-The stack has a real broker and worker, so `web` and `worker` set
-`CELERY_TASK_ALWAYS_EAGER=0` — otherwise the worker and Flower would sit idle
-while `web` ran everything itself. Drop that variable to get eager behaviour
-inside Compose too.
+`CELERY_WORKER_PREFETCH_MULTIPLIER = 1` matters here: at the default of 4, each
+child reserves 4 tasks up front, so one worker claims a backlog it won't start
+for an hour while other workers sit idle and can't take them.
 
 Check the wiring end to end:
 
 ```bash
-docker compose exec web python -c "
-import django; django.setup()
-from mysite.celery import add
+docker compose exec web python manage.py shell -c "
+from mysite.celery import add, long_running
 print(add.delay(21, 21).get(timeout=30))
+print(long_running.delay(5).get(timeout=60))
 "
 ```
 
@@ -57,6 +52,9 @@ print(add.delay(21, 21).get(timeout=30))
   `django_` to avoid colliding with the `redis` and `celery_flower` containers
   in `fastapi_playground`. The two stacks still share ports 6379/8000/5555, so
   only run one at a time.
+- Tasks are acked on receipt (`task_acks_late` is off), so a worker restart
+  loses whatever was mid-flight. For a 15-minute automation that is a real
+  window; add `@app.task(acks_late=True)` to any task that is safe to run twice.
 - `django-celery-beat` is **not** installed: its newest release caps at
   `Django < 6.1`. Beat therefore uses Celery's own `PersistentScheduler`, with
   the schedule file on the `beat-schedule` volume, and periodic tasks are

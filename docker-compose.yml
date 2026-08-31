@@ -10,15 +10,23 @@ services:
     volumes:
       - .:/app:z
     environment:
-      - DJANGO_SETTINGS_MODULE=mysite.settings.dev
-      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
       - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_TASK_ALWAYS_EAGER=0
 
   worker:
     build: .
-    container_name: django_celery_worker
-    command: celery -A mysite worker --loglevel=info --concurrency 1
+    container_name: django_celery_worker_short
+    command: celery -A mysite worker --loglevel=info -Q default --concurrency 2
+    depends_on:
+      - redis
+    volumes:
+      - .:/app:z
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+
+  worker_automations:
+    build: .
+    container_name: django_celery_worker_long
+    command: celery -A mysite worker --loglevel=info -Q automations --concurrency 3
     depends_on:
       - redis
     volumes:
@@ -26,7 +34,6 @@ services:
     environment:
       - DJANGO_SETTINGS_MODULE=mysite.settings.dev
       - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_TASK_ALWAYS_EAGER=0
 
   beat:
     build: .
@@ -37,7 +44,6 @@ services:
     volumes:
       - .:/app:z
     environment:
-      - DJANGO_SETTINGS_MODULE=mysite.settings.dev
       - CELERY_BROKER_URL=redis://redis:6379/0
 
   flower:
@@ -52,7 +58,6 @@ services:
     volumes:
       - .:/app:z
     environment:
-      - DJANGO_SETTINGS_MODULE=mysite.settings.dev
       - CELERY_BROKER_URL=redis://redis:6379/0
 
   redis:

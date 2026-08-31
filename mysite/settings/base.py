@@ -150,6 +150,18 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60
 CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+# Queues. Short tasks stay on `default`; slow automations get their own queue and
+# their own worker, so a 15-minute job can't occupy every slot the fast tasks need.
+CELERY_TASK_DEFAULT_QUEUE = 'default'
+CELERY_TASK_ROUTES = {
+    'mysite.celery.long_running': {'queue': 'automations'},
+}
+
+# One task reserved per child instead of the default 4. With long tasks the
+# default lets a single worker claim a backlog it won't start for an hour, while
+# other workers sit idle and cannot take them.
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_HIJACK_ROOT_LOGGER = False
 
 # Periodic tasks for `celery beat`. django-celery-beat's DatabaseScheduler is

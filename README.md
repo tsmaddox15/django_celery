@@ -17,9 +17,7 @@ docker compose up --build
 | `worker_automations` | `-Q automations --concurrency 2`      | —                     |
 | `beat`               | `celery -A mysite beat`               | —                     |
 | `flower`             | `celery -A mysite flower`             | http://localhost:5555 |
-
-Docker is the dev environment, so tasks always go through Redis to a real
-worker. There is no eager mode.
+s
 
 ## Queues
 

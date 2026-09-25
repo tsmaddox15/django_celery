@@ -26,9 +26,9 @@ def add(x, y):
     return x + y
 
 
-@app.task(bind=True)
+@app.task(bind=True, queue='automations')
 def long_running(self, seconds=10):
-    """Placeholder slow automation. Routed to the `automations` queue by
-    CELERY_TASK_ROUTES, so it runs on the dedicated worker."""
+    """Placeholder slow automation. The decorator puts it on the `automations`
+    queue, so it runs on the dedicated worker."""
     time.sleep(seconds)
     return f'slept {seconds}s on {self.request.hostname}'

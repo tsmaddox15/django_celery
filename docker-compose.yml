@@ -1,3 +1,23 @@
+# Dev-only default; override with MSSQL_SA_PASSWORD in .env or your shell. SQL
+# Server refuses to start unless it has upper, lower, digit and symbol, 8+ chars.
+x-sa-password: &sa-password "${MSSQL_SA_PASSWORD:-DevOnly_Passw0rd!}"
+
+# Everything that touches the ORM, which includes the Celery processes because
+# results are stored through django-celery-results.
+x-db-env: &db-env
+  CELERY_BROKER_URL: redis://redis:6379/0
+  DB_HOST: mssql
+  DB_NAME: mysite
+  DB_USER: sa
+  DB_PASSWORD: *sa-password
+  DB_EXTRA_PARAMS: TrustServerCertificate=yes
+
+x-db-depends: &db-depends
+  redis:
+    condition: service_started
+  mssql-init:
+    condition: service_completed_successfully
+
 services:
   web:
     build: .
@@ -5,46 +25,42 @@ services:
     command: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
     ports:
       - "8000:8000"
-    depends_on:
-      - redis
+    depends_on: *db-depends
     volumes:
       - .:/app:z
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
+      <<: *db-env
 
   worker:
     build: .
     container_name: django_celery_worker_short
     command: celery -A mysite worker --loglevel=info -Q default --concurrency 2
-    depends_on:
-      - redis
+    depends_on: *db-depends
     volumes:
       - .:/app:z
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
+      <<: *db-env
 
   worker_automations:
     build: .
     container_name: django_celery_worker_long
     command: celery -A mysite worker --loglevel=info -Q automations --concurrency 3
-    depends_on:
-      - redis
+    depends_on: *db-depends
     volumes:
       - .:/app:z
     environment:
-      - DJANGO_SETTINGS_MODULE=mysite.settings.dev
-      - CELERY_BROKER_URL=redis://redis:6379/0
+      <<: *db-env
+      DJANGO_SETTINGS_MODULE: mysite.settings.dev
 
   beat:
     build: .
     container_name: django_celery_beat
     command: celery -A mysite beat --loglevel=info --schedule=/tmp/celerybeat-schedule
-    depends_on:
-      - redis
+    depends_on: *db-depends
     volumes:
       - .:/app:z
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
+      <<: *db-env
 
   flower:
     build: .
@@ -58,10 +74,56 @@ services:
     volumes:
       - .:/app:z
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
 
   redis:
     image: redis:7-alpine
     container_name: django_redis
     ports:
       - "6379:6379"
+
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: django_mssql
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: *sa-password
+      # Read by sqlcmd, so the healthcheck doesn't need the password on its command line.
+      SQLCMDPASSWORD: *sa-password
+    volumes:
+      - mssql_data:/var/opt/mssql
+    # SQL Server takes 10-20s after the container starts before it accepts logins.
+    healthcheck:
+      test: ["CMD", "/opt/mssql-tools18/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-C", "-b", "-Q", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  # Django can't create the database itself, so this one-shot does it before
+  # anything runs migrations. It's a no-op once the database exists.
+  mssql-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: django_mssql_init
+    depends_on:
+      mssql:
+        condition: service_healthy
+    environment:
+      SQLCMDPASSWORD: *sa-password
+    entrypoint:
+      - /opt/mssql-tools18/bin/sqlcmd
+      - -S
+      - mssql
+      - -U
+      - sa
+      - -C
+      - -b
+      - -Q
+      - IF DB_ID('mysite') IS NULL CREATE DATABASE mysite
+    restart: "no"
+
+volumes:
+  mssql_data:

@@ -10,5 +10,6 @@ dependencies = [
     "django-celery-results>=2.6.0",
     "flower>=2.1.0",
     "gunicorn>=26.2.0",
+    "mssql-django>=2.0.0",
     "redis>=5",
 ]

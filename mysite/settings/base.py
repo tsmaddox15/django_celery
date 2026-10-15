@@ -74,12 +74,33 @@ WSGI_APPLICATION = 'mysite.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# SQL Server when DB_HOST is set (docker compose sets it), SQLite otherwise, so
+# `manage.py` still works on a bare checkout with no database server running.
+if os.environ.get('DB_HOST'):
+    DATABASES = {
+        'default': {
+            'ENGINE': 'mssql',
+            'NAME': os.environ.get('DB_NAME', 'mysite'),
+            'USER': os.environ.get('DB_USER', 'sa'),
+            'PASSWORD': os.environ['DB_PASSWORD'],
+            'HOST': os.environ['DB_HOST'],
+            'PORT': os.environ.get('DB_PORT', '1433'),
+            'OPTIONS': {
+                'driver': 'ODBC Driver 18 for SQL Server',
+                # Driver 18 encrypts by default and rejects self-signed certs. The
+                # dev container passes TrustServerCertificate=yes; production
+                # should leave this empty and present a real certificate.
+                'extra_params': os.environ.get('DB_EXTRA_PARAMS', ''),
+            },
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation

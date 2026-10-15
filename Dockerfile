@@ -16,6 +16,18 @@ ARG GID=1000
 RUN groupadd --gid "$GID" app \
     && useradd --uid "$UID" --gid "$GID" --create-home --shell /bin/bash app
 
+# Microsoft's ODBC driver for SQL Server; pyodbc (via mssql-django) loads it by
+# name, and pip has no way to install it.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && curl -sSL -o /tmp/packages-microsoft-prod.deb \
+        https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb \
+    && dpkg -i /tmp/packages-microsoft-prod.deb \
+    && rm /tmp/packages-microsoft-prod.deb \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 unixodbc \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Dependencies are their own layer, so editing project code doesn't reinstall them.

@@ -15,14 +15,29 @@ x-db-env: &db-env
 x-db-depends: &db-depends
   redis:
     condition: service_started
-  mssql-init:
+  migrate:
     condition: service_completed_successfully
 
 services:
+  # One-shot: everything that touches the ORM waits on this, so beat never starts
+  # before the django_celery_beat tables exist.
+  migrate:
+    build: .
+    container_name: django_migrate
+    command: python manage.py migrate --noinput
+    depends_on:
+      mssql-init:
+        condition: service_completed_successfully
+    volumes:
+      - .:/app:z
+    environment:
+      <<: *db-env
+    restart: "no"
+
   web:
     build: .
     container_name: django_app
-    command: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
+    command: python manage.py runserver 0.0.0.0:8000
     ports:
       - "8000:8000"
     depends_on: *db-depends
@@ -55,7 +70,9 @@ services:
   beat:
     build: .
     container_name: django_celery_beat
-    command: celery -A mysite beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    # The scheduler comes from CELERY_BEAT_SCHEDULER: the schedule is read from
+    # SQL Server, so there is no local celerybeat-schedule file.
+    command: celery -A mysite beat --loglevel=info
     depends_on: *db-depends
     volumes:
       - .:/app:z

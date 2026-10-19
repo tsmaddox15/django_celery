@@ -28,10 +28,10 @@ Inside compose, Django talks to SQL Server through `mssql-django` and Microsoft'
 ODBC Driver 17 (installed in the `Dockerfile`). The `sa` password defaults to a
 dev-only value; set `MSSQL_SA_PASSWORD` in `.env` to change it.
 
-Without `DB_HOST` set (e.g. running `manage.py` straight on the host), settings
+Without `ADMIN_HOST` set (e.g. running `manage.py` straight on the host), settings
 fall back to SQLite. To point a host-run Django at the container instead, install
-`msodbcsql17` on the host and export `DB_HOST=localhost`, `DB_PASSWORD=...` and
-`DB_EXTRA_PARAMS=TrustServerCertificate=yes`.
+`msodbcsql17` on the host and export `ADMIN_HOST=localhost`, `ADMIN_PASSWORD=...` and
+`ADMIN_EXTRA_PARAMS=TrustServerCertificate=yes`.
 
 ## Queues
 

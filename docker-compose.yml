@@ -1,86 +1,61 @@
-# Dev-only default; override with MSSQL_SA_PASSWORD in .env or your shell. SQL
-# Server refuses to start unless it has upper, lower, digit and symbol, 8+ chars.
-x-sa-password: &sa-password "${MSSQL_SA_PASSWORD:-DevOnly_Passw0rd!}"
+# Settings and secrets live in .env (copy .env.example to start). Compose reads
+# it twice: `env_file` hands every variable to the app containers, and the
+# ${...} placeholders in this file are filled from it too.
 
-# Everything that touches the ORM, which includes the Celery processes because
-# results are stored through django-celery-results.
-x-db-env: &db-env
-  CELERY_BROKER_URL: redis://redis:6379/0
-  DB_HOST: mssql
-  DB_NAME: mysite
-  DB_USER: sa
-  DB_PASSWORD: *sa-password
-  DB_EXTRA_PARAMS: TrustServerCertificate=yes
+# Locally the app logs in as sa, so its password is the sa password as well.
+x-sa-password: &sa-password "${DB_PASSWORD:?Set DB_PASSWORD in .env (copy .env.example)}"
 
-x-db-depends: &db-depends
-  redis:
-    condition: service_started
-  migrate:
-    condition: service_completed_successfully
+# Shared by everything built from this repo. A service can still override any of
+# these keys, e.g. migrate and flower set their own depends_on.
+x-app: &app
+  build: .
+  env_file: .env
+  volumes:
+    - .:/app:z
+  depends_on:
+    redis:
+      condition: service_started
+    migrate:
+      condition: service_completed_successfully
 
 services:
   # One-shot: everything that touches the ORM waits on this, so beat never starts
   # before the django_celery_beat tables exist.
   migrate:
-    build: .
+    <<: *app
     container_name: django_migrate
     command: python manage.py migrate --noinput
     depends_on:
       mssql-init:
         condition: service_completed_successfully
-    volumes:
-      - .:/app:z
-    environment:
-      <<: *db-env
     restart: "no"
 
   web:
-    build: .
+    <<: *app
     container_name: django_app
     command: python manage.py runserver 0.0.0.0:8000
     ports:
       - "8000:8000"
-    depends_on: *db-depends
-    volumes:
-      - .:/app:z
-    environment:
-      <<: *db-env
 
   worker:
-    build: .
+    <<: *app
     container_name: django_celery_worker_short
     command: celery -A mysite worker --loglevel=info -Q default --concurrency 2
-    depends_on: *db-depends
-    volumes:
-      - .:/app:z
-    environment:
-      <<: *db-env
 
   worker_automations:
-    build: .
+    <<: *app
     container_name: django_celery_worker_long
     command: celery -A mysite worker --loglevel=info -Q automations --concurrency 3
-    depends_on: *db-depends
-    volumes:
-      - .:/app:z
-    environment:
-      <<: *db-env
-      DJANGO_SETTINGS_MODULE: mysite.settings.dev
 
   beat:
-    build: .
+    <<: *app
     container_name: django_celery_beat
     # The scheduler comes from CELERY_BEAT_SCHEDULER: the schedule is read from
     # SQL Server, so there is no local celerybeat-schedule file.
     command: celery -A mysite beat --loglevel=info
-    depends_on: *db-depends
-    volumes:
-      - .:/app:z
-    environment:
-      <<: *db-env
 
   flower:
-    build: .
+    <<: *app
     container_name: django_celery_flower
     command: celery -A mysite flower --address=0.0.0.0 --port=5555
     ports:
@@ -88,10 +63,6 @@ services:
     depends_on:
       - redis
       - worker
-    volumes:
-      - .:/app:z
-    environment:
-      CELERY_BROKER_URL: redis://redis:6379/0
 
   redis:
     image: redis:7-alpine
@@ -139,7 +110,7 @@ services:
       - -C
       - -b
       - -Q
-      - IF DB_ID('mysite') IS NULL CREATE DATABASE mysite
+      - IF DB_ID('${DB_NAME:-mysite}') IS NULL CREATE DATABASE [${DB_NAME:-mysite}]
     restart: "no"
 
 volumes:

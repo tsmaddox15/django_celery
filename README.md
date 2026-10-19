@@ -7,6 +7,7 @@ schedule stored in it via `django-celery-beat`.
 ## Running it
 
 ```bash
+cp .env.example .env   # first time only; then fill in real values
 docker compose up --build
 ```
 
@@ -14,24 +15,40 @@ docker compose up --build
 |----------------------|---------------------------------------|-----------------------|
 | `redis`              | broker                                | `localhost:6379`      |
 | `mssql`              | SQL Server 2022 (Developer edition)   | `localhost:1433`      |
-| `mssql-init`         | one-shot: creates the `mysite` DB     | —                     |
+| `mssql-init`         | one-shot: creates the `DB_NAME` DB    | —                     |
 | `migrate`            | one-shot: `manage.py migrate`         | —                     |
 | `web`                | `manage.py runserver`                 | http://localhost:8000 |
-| `worker`             | `-Q default --concurrency 3`          | —                     |
-| `worker_automations` | `-Q automations --concurrency 2`      | —                     |
+| `worker`             | `-Q default --concurrency 2`          | —                     |
+| `worker_automations` | `-Q automations --concurrency 3`      | —                     |
 | `beat`               | `celery -A mysite beat` (DB schedule) | —                     |
 | `flower`             | `celery -A mysite flower`             | http://localhost:5555 |
+
+## Settings and secrets (`.env`)
+
+All configuration lives in `.env`, which is git-ignored and kept out of the
+image by `.dockerignore`. `.env.example` lists every key. Each service built
+from this repo (web, both workers, beat, flower, migrate) loads the whole file
+through `env_file`, so a variable you add there is visible to all of them as
+`os.environ['NAME']`. Run `docker compose up -d` after editing `.env`; a plain
+`docker restart` keeps the old values.
+
+Wrap values containing `$` or `#` in single quotes, or Compose will expand or
+strip them. To see what a service actually receives:
+`docker compose exec worker env`.
 
 ## Database
 
 Inside compose, Django talks to SQL Server through `mssql-django` and Microsoft's
-ODBC Driver 17 (installed in the `Dockerfile`). The `sa` password defaults to a
-dev-only value; set `MSSQL_SA_PASSWORD` in `.env` to change it.
+ODBC Driver 17 (installed in the `Dockerfile`). The app logs in as `sa`, so
+`DB_PASSWORD` in `.env` is also the `sa` password the `mssql` container is
+created with. SQL Server only reads it the first time the `mssql_data` volume is
+created; to change it afterwards, run `docker compose down -v` (which deletes the
+database) or change the login's password in SQL Server too.
 
-Without `ADMIN_HOST` set (e.g. running `manage.py` straight on the host), settings
+Without `DB_HOST` set (e.g. running `manage.py` straight on the host), settings
 fall back to SQLite. To point a host-run Django at the container instead, install
-`msodbcsql17` on the host and export `ADMIN_HOST=localhost`, `ADMIN_PASSWORD=...` and
-`ADMIN_EXTRA_PARAMS=TrustServerCertificate=yes`.
+`msodbcsql17` on the host and export `DB_HOST=localhost`, `DB_PASSWORD=...` and
+`DB_EXTRA_PARAMS=TrustServerCertificate=yes`.
 
 ## Queues
 

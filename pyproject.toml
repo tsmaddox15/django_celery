@@ -13,4 +13,5 @@ dependencies = [
     "gunicorn>=26.2.0",
     "mssql-django>=2.0.0",
     "redis>=5",
+    "selenium>=4.51.0",
 ]

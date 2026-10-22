@@ -215,4 +215,19 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'my_app.tasks.sync_crm_contacts',
         'schedule': crontab(minute=0),
     },
+    'process-work-items-hourly': {
+        'task': 'my_app.tasks.process_work_items',
+        'schedule': crontab(minute=0),
+    },
 }
+
+
+# Browser automations (my_app/browser.py)
+#
+# The defaults log in to this project's own admin, as the `automation` user that
+# migration my_app 0002 creates. On the host, set SELENIUM_REMOTE_URL to
+# http://localhost:4444, or to '' to drive a local headless Chrome instead.
+SELENIUM_REMOTE_URL = os.environ.get('SELENIUM_REMOTE_URL', 'http://selenium:4444')
+AUTOMATION_SITE_URL = os.environ.get('AUTOMATION_SITE_URL', 'http://web:8000')
+AUTOMATION_SITE_USERNAME = os.environ.get('AUTOMATION_SITE_USERNAME', 'automation')
+AUTOMATION_SITE_PASSWORD = os.environ.get('AUTOMATION_SITE_PASSWORD', 'automation')

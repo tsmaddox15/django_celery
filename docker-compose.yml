@@ -46,6 +46,13 @@ services:
     <<: *app
     container_name: django_celery_worker_long
     command: celery -A mysite worker --loglevel=info -Q automations --concurrency 3
+    depends_on:
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+      selenium:
+        condition: service_started
 
   beat:
     <<: *app
@@ -64,9 +71,31 @@ services:
       - redis
       - worker
 
+  # Chrome for browser automations (my_app/browser.py). Tasks connect over
+  # SELENIUM_REMOTE_URL. Watch the browsers live at http://localhost:7900
+  # (password: secret).
+  selenium:
+    image: selenium/standalone-chromium:latest
+    container_name: django_selenium
+    # Chrome crashes with Docker's default 64MB of shared memory.
+    shm_size: 2gb
+    environment:
+      # One browser per automations worker slot (--concurrency 3).
+      SE_NODE_MAX_SESSIONS: 3
+      SE_NODE_OVERRIDE_MAX_SESSIONS: "true"
+    ports:
+      - "4444:4444"
+      - "7900:7900"
+
   redis:
     image: redis:7-alpine
     container_name: django_redis
+    # Append-only mode writes every change to disk (synced once a second), so
+    # queued tasks survive a restart or `docker compose down`. Without it Redis
+    # only snapshots every few minutes.
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
     ports:
       - "6379:6379"
 
@@ -115,3 +144,4 @@ services:
 
 volumes:
   mssql_data:
+  redis_data:

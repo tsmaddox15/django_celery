@@ -80,8 +80,9 @@ services:
     # Chrome crashes with Docker's default 64MB of shared memory.
     shm_size: 2gb
     environment:
-      # One browser per automations worker slot (--concurrency 3).
-      SE_NODE_MAX_SESSIONS: 3
+      # task_items keeps one session per automations worker process
+      # (--concurrency 3), and my_app's hourly run opens one more of its own.
+      SE_NODE_MAX_SESSIONS: 4
       SE_NODE_OVERRIDE_MAX_SESSIONS: "true"
     ports:
       - "4444:4444"

@@ -1,3 +1,7 @@
+import ast
+import json
+
+from celery import current_app
 from django.contrib import admin
 from django.utils import timezone
 from django_celery_results.admin import TaskResultAdmin
@@ -42,3 +46,15 @@ admin.site.unregister(TaskResult)
 @admin.register(TaskResult)
 class TaskResultWithWorkItemsAdmin(TaskResultAdmin):
     inlines = [WorkItemInline]
+    actions = ['retry']
+
+    @admin.action(description='Retry failed tasks')
+    def retry(self, request, queryset):
+        failed = queryset.filter(status='FAILURE')
+        for result in failed:
+            # The args are stored as their repr, e.g. "(5,)", JSON-encoded.
+            args = ast.literal_eval(json.loads(result.task_args or '"()"'))
+            kwargs = ast.literal_eval(json.loads(result.task_kwargs or '"{}"'))
+            # apply_async on the task itself, so its own options (e.g. queue) apply.
+            current_app.tasks[result.task_name].apply_async(args, kwargs)
+        self.message_user(request, f'Sent {len(failed)} failed tasks again.')

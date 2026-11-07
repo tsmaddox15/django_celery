@@ -86,6 +86,28 @@ To point it at a real site, set `AUTOMATION_SITE_*` in `.env`, and change
 They currently log in to this project's own admin and open the page in each
 item's `path`.
 
+## Browser automations, one task per item (task_items)
+
+The `task_items` app does the same work the other way round, for comparison.
+Each `TaskItem` runs as its own `process_task_item` Celery task, and the item
+keeps no status of its own: it points at its task's result and at the group it
+was sent in.
+
+- `create_task_items(payloads)` adds items; `send_new_task_items` (hourly from
+  beat) sends every item not sent yet as one Celery group.
+- Errors aren't caught. A failing task is retried twice by Celery with backoff,
+  then ends as FAILURE with its traceback in the task result.
+- Each automations worker process keeps one logged-in Selenium session
+  (`task_items/sessions.py`) and reuses it for every task it runs, so there are
+  three sessions and none is used by two tasks at once. A failing task closes
+  its session, in case the browser broke, so the next one logs in again.
+- In the admin, **Task items** shows each item's status and last error, with
+  **Send again, as a new group** to redo selected items. Each **Group results**
+  page lists the items sent in that group.
+
+Item status lives in the task results, so `CELERY_RESULT_EXPIRES` keeps them for
+30 days rather than Celery's default of one day.
+
 ## Periodic tasks (beat)
 
 The schedule lives in SQL Server, in `django-celery-beat`'s tables. Add, edit,

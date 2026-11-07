@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+from datetime import timedelta
 from pathlib import Path
 
 from celery.schedules import crontab
@@ -46,6 +47,7 @@ INSTALLED_APPS = [
     'django_celery_beat',
 
     'my_app',
+    'task_items',
 ]
 
 MIDDLEWARE = [
@@ -172,6 +174,9 @@ CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/
 # queryable from the admin and survive a broker flush.
 CELERY_RESULT_BACKEND = 'django-db'
 CELERY_RESULT_EXTENDED = True
+# Beat's daily cleanup deletes results older than this (Celery's default is one
+# day). task_items reads each item's status from its result, so keep them longer.
+CELERY_RESULT_EXPIRES = timedelta(days=30)
 
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -217,6 +222,10 @@ CELERY_BEAT_SCHEDULE = {
     },
     'process-work-items-hourly': {
         'task': 'my_app.tasks.process_work_items',
+        'schedule': crontab(minute=0),
+    },
+    'send-new-task-items-hourly': {
+        'task': 'task_items.tasks.send_new_task_items',
         'schedule': crontab(minute=0),
     },
 }
